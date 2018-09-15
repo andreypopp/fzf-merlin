@@ -1,127 +1,71 @@
-" ------------------------------------------------------------------
-" FZF harness
-" ------------------------------------------------------------------
-
-let s:TYPE = {'dict': type({}), 'funcref': type(function('call'))}
-
-function! s:get_color(attr, ...)
-  for group in a:000
-    let code = synIDattr(synIDtrans(hlID(group)), a:attr, 'cterm')
-    if code =~ '^[0-9]\+$'
-      return code
-    endif
-  endfor
-  return ''
+function! s:accept(line)
+  let find = '\(\d\+\):\(\d\+\) '
+  let m = matchstr(a:line, find)
+  let line = substitute(m, find, '\1', '')
+  let col = substitute(m, find, '\2', '')
+  call cursor(line, col)
 endfunction
 
-function! s:defaults()
-  let rules = copy(get(g:, 'fzf_colors', {}))
-  let colors = join(map(items(filter(map(rules, 'call("s:get_color", v:val)'), '!empty(v:val)')), 'join(v:val, ":")'), ',')
-  return empty(colors) ? '' : ('--color='.colors)
-endfunction
-
-function! s:wrap(name, opts, bang)
-  " fzf#wrap does not append --expect if sink or sink* is found
-  let opts = copy(a:opts)
-  if get(opts, 'options', '') !~ '--expect' && has_key(opts, 'sink*')
-    let Sink = remove(opts, 'sink*')
-    let wrapped = fzf#wrap(a:name, opts, a:bang)
-    let wrapped['sink*'] = Sink
-  else
-    let wrapped = fzf#wrap(a:name, opts, a:bang)
+function! s:format_name(item)
+  let l:prefix = a:item.kind . " "
+  let l:suffix = ""
+  if a:item.kind ==# "Module"
+    let l:prefix = "module "
+  elseif a:item.kind ==# "Value"
+    let l:prefix = "val "
+    let l:suffix = " : ..."
+  elseif a:item.kind ==# "Type"
+    let l:prefix = "type "
+  elseif a:item.kind ==# "Constructor"
+    let l:prefix = "| "
+    let l:suffix = " of ..."
+  elseif a:item.kind ==# "Label"
+    let l:prefix = "{ "
+    let l:suffix = "; ... }"
+  elseif a:item.kind ==# "Signature"
+    let l:prefix = "sig "
   endif
-  return wrapped
+  return l:prefix . a:item.name . l:suffix
 endfunction
 
-function! s:fzf(name, opts, extra)
-  let [extra, bang] = [{}, 0]
-  if len(a:extra) <= 1
-    let first = get(a:extra, 0, 0)
-    if type(first) == s:TYPE.dict
-      let extra = first
+function! s:process(lines, items, trace)
+  for l:item in a:items
+    let l:name = s:format_name(l:item)
+    if empty(a:trace)
+      let l:prev = ""
     else
-      let bang = first
+      let l:prev = join(a:trace, " > ") . " > "
     endif
-  elseif len(a:extra) == 2
-    let [extra, bang] = a:extra
-  else
-    throw 'invalid number of arguments'
-  endif
-
-  let eopts  = has_key(extra, 'options') ? remove(extra, 'options') : ''
-  let merged = extend(copy(a:opts), extra)
-  let merged.options = join(filter([s:defaults(), get(merged, 'options', ''), eopts], '!empty(v:val)'))
-  return fzf#run(s:wrap(a:name, merged, bang))
-endfunction
-
-" ------------------------------------------------------------------
-" MerlinOutline
-" ------------------------------------------------------------------
-
-python <<EOF
-import vim
-import merlin
-
-fzf_merlin_outline_outlines = []
-fzf_merlin_outline_send_cmd = lambda cmd: None
-
-def fzf_merlin_outline_linearize(prefix, lst):
-    for x in lst:
-        name = "%s%s" % (prefix, x['name'])
-        fzf_merlin_outline_outlines.append(
-          {'name': name, 'pos': x['start'], 'kind': x['kind']})
-        fzf_merlin_outline_linearize(name + ".", x['children'])
-
-def fzf_merlin_outline_get_outlines():
-    fzf_merlin_outline_outlines[:] = []
-    fzf_merlin_outline_linearize("", fzf_merlin_outline_send_cmd("outline"))
-    fzf_merlin_outline_outlines.sort(key = lambda x: len(x['name']))
-
-def fzf_merlin_outline_init():
-    fzf_merlin_outline_get_outlines()
-    if len(fzf_merlin_outline_outlines) == 0:
-        return
-    longest = len(fzf_merlin_outline_outlines[-1]['name'])
-    i = 0
-    for x in fzf_merlin_outline_outlines:
-        name = x['name'].replace("'", "''")
-        vim.command("call add(l:modules, '%4d : %*s\t--\t%s')" %
-                    (i, longest, name, x['kind']))
-        i += 1
-
-def fzf_merlin_outline_accept():
-    idx = int(vim.eval("a:str").strip().split(' ')[0])
-    try:
-        x = fzf_merlin_outline_outlines[idx]
-        l = x['pos']['line']
-        c = x['pos']['col']
-        vim.current.window.cursor = (l, c)
-    except KeyError as e:
-        print(str(e))
-
-def fzf_merlin_outline_update_and_send(process, ctxt, cmd):
-    ctxt['query'] = cmd
-    return process.command(ctxt)
-
-def fzf_merlin_outline_preinit():
-    global fzf_merlin_outline_send_cmd
-    merlin.sync()
-    process = merlin.merlin_process()
-    context = merlin.context("fake_query")
-    fzf_merlin_outline_send_cmd = lambda *cmd: fzf_merlin_outline_update_and_send(process, context, cmd)
-EOF
-
-function! s:fzf_merlin_outline_accept(str)
-  python fzf_merlin_outline_accept()
+    let l:line = printf(
+            \ "%d:%d %s%s",
+            \ l:item.start.line,
+            \ l:item.start.col,
+            \ l:prev,
+            \ l:name
+          \)
+    call add(a:lines, l:line)
+    let l:nexttrace = copy(a:trace)
+    call add(l:nexttrace, l:name)
+    call s:process(a:lines, l:item.children, l:nexttrace)
+  endfor
 endfunction
 
 function! fzf_merlin#merlin_outline(...)
-  let l:modules = []
-  python fzf_merlin_outline_preinit()
-  python fzf_merlin_outline_init()
-  return s:fzf('fzf_merlin_outline', {
-  \ 'source':  l:modules,
-  \ 'sink':   function('s:fzf_merlin_outline_accept'),
-  \ 'options': '+m -x --tiebreak=index --header-lines=0 --ansi -d "\t" -n 2,1..2 --prompt="MerlinOutline> "',
-  \}, a:000)
+
+  let l:fname = expand("%")
+  let l:input = join(getline(1,'$'), "\n")
+  let l:data = system('ocamlmerlin server outline -filename ' . l:fname, l:input)
+  let l:resp = json_decode(l:data)
+  let l:value = l:resp.value
+
+  let l:lines = []
+  call s:process(l:lines, l:value, [])
+
+  " python fzf_merlin_outline_preinit()
+  " python fzf_merlin_outline_init()
+  return fzf#run(fzf#wrap('fzf_merlin_outline', {
+  \ 'source':  reverse(l:lines),
+  \ 'sink':   function('s:accept'),
+  \ 'options': '--no-multi --tiebreak=index --header-lines=0 -d " " --with-nth "2.." --prompt="MerlinOutline> "',
+  \}))
 endfunction

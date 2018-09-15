@@ -1,6 +1,6 @@
 # fzf-merlin
 
-Merlin bindings for FZF.
+Show outline of OCaml/Reason code with merlin in fzf.
 
 ## Installation
 
