@@ -52,7 +52,7 @@ endfunction
 
 function! fzf_merlin#merlin_outline(...)
 
-  let l:fname = expand("%")
+  let l:fname = expand("%:p")
   let l:input = join(getline(1,'$'), "\n")
   let l:data = system('ocamlmerlin server outline -filename ' . l:fname, l:input)
   let l:resp = json_decode(l:data)
@@ -68,4 +68,18 @@ function! fzf_merlin#merlin_outline(...)
   \ 'sink':   function('s:accept'),
   \ 'options': '--no-multi --tiebreak=index --header-lines=0 -d " " --with-nth "2.." --prompt="MerlinOutline> "',
   \}))
+endfunction
+
+function! fzf_merlin#merlin_typeof()
+  let l:fname = expand("%:p")
+  let [l:line, l:col] = getcurpos()[1:2]
+  let l:input = join(getline(1,'$'), "\n")
+  let l:json = system(
+          \ 'ocamlmerlin server type-enclosing'
+          \ . ' -index 0'
+          \ . ' -filename ' . l:fname
+          \ . ' -position ' . l:line . ':' . l:col
+        \, l:input)
+  let l:resp = json_decode(l:json)
+  call ale#util#ShowMessage(l:resp.value[0].type)
 endfunction
