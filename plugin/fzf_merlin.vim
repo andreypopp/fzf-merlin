@@ -11,6 +11,8 @@ function! s:callback (buffer, lines)
   let l:json = join(a:lines, "\n")
   let l:resp = json_decode(l:json)
 
+  let l:dummy_loc = {'line': 1, 'col': -1}
+
   for l:item in l:resp.value
 
     if l:item.type ==# 'warning'
@@ -19,23 +21,26 @@ function! s:callback (buffer, lines)
       let l:type = 'E'
     endif
 
+    let l:message = split(l:item.message, "\n")
+
     call add(l:errors, {
-          \ "text": l:item.message,
+          \ "text": l:message[0],
+          \ "detail": l:item.message,
           \ "type": l:type,
-          \ "lnum": l:item.start.line,
-          \ "col": l:item.start.col + 1,
-          \ "end_lnum": l:item.end.line,
-          \ "end_col": l:item.end.col,
+          \ "lnum": get(l:item, 'start', dummy_loc).line,
+          \ "col": get(l:item, 'start', dummy_loc).col + 1,
+          \ "end_lnum": get(l:item, 'end', dummy_loc).line,
+          \ "end_col": get(l:item, 'end', dummy_loc).col,
           \ })
 
     for l:sub in l:item.sub
       call add(l:errors, {
             \ "text": l:sub.message,
             \ "type": l:type,
-            \ "lnum": l:sub.start.line,
-            \ "col": l:sub.start.col + 1,
-            \ "end_lnum": l:sub.end.line,
-            \ "end_col": l:sub.end.col,
+            \ "lnum": get(l:sub, 'start', dummy_loc).line,
+            \ "col": get(l:sub, 'start', dummy_loc).col + 1,
+            \ "end_lnum": get(l:sub, 'end', dummy_loc).line,
+            \ "end_col": get(l:sub, 'end', dummy_loc).col,
             \ })
     endfor
   endfor
