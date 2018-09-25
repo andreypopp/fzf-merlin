@@ -21,22 +21,21 @@ function! s:callback (buffer, lines)
       let l:type = 'E'
     endif
 
-    let l:message = split(l:item.message, "\n")
+    let l:message = join(split(l:item.message, "\n"), " ")
+    let l:message = substitute(l:message, ' \+', ' ', 'g')
 
     " Signature mismatch errors span too many lines so we limit it to report
     " only start loc.
     if l:message[0] =~ "^Signature mismatch"
       call add(l:errors, {
-            \ "text": l:message[0],
-            \ "detail": l:item.message,
+            \ "text": l:message,
             \ "type": l:type,
             \ "lnum": get(l:item, 'start', dummy_loc).line,
             \ "col": get(l:item, 'start', dummy_loc).col + 1,
             \ })
     else
       call add(l:errors, {
-            \ "text": l:message[0],
-            \ "detail": l:item.message,
+            \ "text": l:message,
             \ "type": l:type,
             \ "lnum": get(l:item, 'start', dummy_loc).line,
             \ "col": get(l:item, 'start', dummy_loc).col + 1,
